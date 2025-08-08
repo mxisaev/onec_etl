@@ -1,0 +1,8 @@
+{
+    "company_products": {
+        "id": "company_products_dataset",
+        "source_table": "CompanyProducts",
+        "target_table": "company_products",
+        "description": "Company products dataset from Power BI"
+    }
+} 

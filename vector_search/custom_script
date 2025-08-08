@@ -1,0 +1,132 @@
+const { Pool } = require('pg');
+const { registerVector } = require('pgvector/pg');
+
+async function findSimilarProducts(searchText, excludeSameBrand = false, categoryWeight = 1.0, limit = 5) {
+    // Database connection parameters with remote server
+    const pool = new Pool({
+        user: 'postgresadmin',
+        host: '91.237.249.34',  // Remote PostgreSQL server
+        database: 'data',
+        password: 'J5-unaxda3SK',
+        port: '5432',
+        ssl: true  // SSL for remote connection
+    });
+
+    try {
+        // Register vector type
+        await registerVector(pool);
+
+        // First, find products matching the description
+        const searchQuery = `
+            SELECT id, description, brand, category
+            FROM companyproducts
+            WHERE description ILIKE $1
+            AND is_vector = true
+            LIMIT 1;
+        `;
+        
+        const searchResult = await pool.query(searchQuery, [`%${searchText}%`]);
+        
+        if (!searchResult.rows.length) {
+            return JSON.stringify({ error: `No products found matching '${searchText}'` });
+        }
+
+        const product = searchResult.rows[0];
+        
+        // Get the reference product's vector
+        const vectorQuery = `
+            SELECT vector 
+            FROM companyproducts 
+            WHERE id = $1 AND is_vector = true;
+        `;
+        
+        const vectorResult = await pool.query(vectorQuery, [product.id]);
+        const refVector = vectorResult.rows[0].vector;
+
+        // Find similar products with weighted category similarity
+        let query = `
+            WITH similarity_scores AS (
+                SELECT 
+                    id,
+                    description,
+                    brand,
+                    category,
+                    vector <=> $1::vector as vector_distance,
+                    CASE 
+                        WHEN category = $2 THEN 1.0
+                        ELSE 0.0
+                    END as category_match
+                FROM companyproducts
+                WHERE is_vector = true 
+                AND id != $3
+        `;
+        
+        let params = [refVector, product.category, product.id];
+        
+        if (excludeSameBrand) {
+            query += " AND brand != $4";
+            params.push(product.brand);
+        }
+            
+        query += `
+            )
+            SELECT 
+                id,
+                description,
+                brand,
+                category,
+                vector_distance,
+                category_match,
+                (1 - vector_distance) * (1 - $${params.length + 1}) + category_match * $${params.length + 2} as combined_score
+            FROM similarity_scores
+            ORDER BY combined_score DESC
+            LIMIT $${params.length + 3};
+        `;
+        
+        params.push(categoryWeight, categoryWeight, limit);
+        
+        const results = await pool.query(query, params);
+        
+        // Format results
+        const formattedResults = results.rows.map(row => ({
+            id: row.id,
+            description: row.description,
+            brand: row.brand,
+            category: row.category,
+            vectorSimilarity: (1 - row.vector_distance).toFixed(2),
+            categoryMatch: row.category_match === 1.0,
+            combinedScore: row.combined_score.toFixed(2)
+        }));
+
+        return JSON.stringify({
+            referenceProduct: {
+                id: product.id,
+                description: product.description,
+                brand: product.brand,
+                category: product.category
+            },
+            similarProducts: formattedResults
+        });
+
+    } catch (error) {
+        console.error('Error:', error);
+        return JSON.stringify({ error: error.message });
+    } finally {
+        await pool.end();
+    }
+}
+
+// Main function that will be called by Flowise
+async function main($input) {
+    // $input should contain searchText, excludeSameBrand, and categoryWeight
+    const { searchText, excludeSameBrand = false, categoryWeight = 1.0, limit = 5 } = $input;
+    
+    if (!searchText) {
+        return JSON.stringify({ error: 'searchText is required' });
+    }
+
+    return await findSimilarProducts(searchText, excludeSameBrand, categoryWeight, limit);
+}
+
+// Export the main function
+module.exports = main;
