@@ -53,6 +53,41 @@ uuid-1     | Материал    | Латунь
 uuid-1     | Цвет        | Черный
 ```
 
+## Решенные проблемы
+
+### ❌ Проблема с символами `|` в названиях характеристик
+
+**Описание проблемы:**
+В исходных данных из Power BI характеристики разделяются символом `|`, но при парсинге этот символ мог оставаться в начале названия характеристики, что приводило к некорректным ключам вида `"| Материал"`, `"| Цвет"`.
+
+**Пример неправильного парсинга:**
+```
+Исходная строка: "Бренд: Haiba | Материал: Латунь | Цвет: Черный"
+Неправильный результат:
+- prop_key: "| Материал"  ❌
+- prop_key: "| Цвет"      ❌
+```
+
+**Решение:**
+Обновлен regex паттерн и логика очистки в функции `migrate_product_properties_task`:
+
+```python
+# Новый regex паттерн
+pattern = r'(?:^|\|\s*)([^:|]+):\s*([^|]*?)(?=\s*\||$)'
+
+# Очистка ключей и значений
+for key, value in matches:
+    key = key.strip().lstrip('|').strip()      # Убираем ведущий '|'
+    value = value.strip().rstrip('|').strip()  # Убираем завершающий '|'
+    if key and value:
+        properties[key] = value
+```
+
+**Результат исправления:**
+- **До исправления:** 120,214 записей с символами `|` в `prop_key`
+- **После исправления:** 0 записей с символами `|` в `prop_key`
+- **Статус:** ✅ Проблема полностью решена
+
 ## Использование
 
 ### Поиск продуктов по характеристикам
@@ -134,6 +169,21 @@ client.merge_data_with_properties(
 )
 ```
 
+### Запуск DAG для применения исправлений
+Если нужно применить исправления парсинга к существующим данным:
+
+```bash
+# Запуск DAG через Airflow
+cd /var/www/vhosts/itland.uk/docker
+docker compose exec airflow-webserver airflow dags trigger CompanyProductsETL
+
+# Или через скрипт
+cd /var/www/vhosts/itland.uk/docker/dags/oneC_etl
+bash run_etl.sh
+```
+
+**Важно:** DAG автоматически применяет исправления парсинга при каждом запуске, поэтому проблема с символами `|` не повторится.
+
 ### Статистика обработки
 ETL возвращает статистику:
 ```python
@@ -207,4 +257,11 @@ SELECT product_id, prop_key, COUNT(*)
 FROM product_properties
 GROUP BY product_id, prop_key
 HAVING COUNT(*) > 1;
+
+-- Проверка на наличие символов '|' в названиях характеристик (должно быть 0)
+SELECT COUNT(*) AS with_pipes FROM product_properties WHERE prop_key LIKE '%|%';
+
+-- Примеры некорректных ключей (если есть)
+SELECT prop_key, prop_value FROM product_properties 
+WHERE prop_key LIKE '%|%' LIMIT 5;
 ``` 

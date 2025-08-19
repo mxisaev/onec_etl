@@ -124,6 +124,21 @@ DAX_MAPPINGS = {
             'Product Properties': 'product_properties'
         },
         'table_template': 'company_products_template'
+    },
+    'partners': {
+        'query': 'SUPPLIERS_QUERY',  # Будет загружен из Airflow Variables
+        'columns': {
+            'УТ_Партнеры[Партнер.УТ11]': 'partner',
+            'УТ_Контактные лица партнеров[Контактное лицо]': 'contact',
+            'УТ_Контактные лица партнеров[email]': 'contact_email',
+            'УТ_Пользователи[_description]': 'responsible_manager',
+            'УТ_Партнеры[id_1c]': 'id_1c_partner',
+            'УТ_Партнеры[is_client]': 'is_client',
+            'УТ_Партнеры[is_supplier]': 'is_supplier',
+            'УТ_Контактные лица партнеров[Роль]': 'role',
+            'УТ_Контактные лица партнеров[id_1c]': 'id_1c_contact'
+        },
+        'table_template': 'partners_template'
     }
 }
 

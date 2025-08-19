@@ -266,7 +266,7 @@ class PostgresClient:
             
             update_set = ", ".join(update_columns)
             
-            # Add special handling for is_vector flag
+            # Add special handling for is_vector flag and updated_at
             # Используем только бизнес-колонки для distinct_conditions, если columns_for_change_analysis передан
             distinct_conditions = []
             change_cols = columns_for_change_analysis if columns_for_change_analysis is not None else [col for col in data.columns if col not in key_columns and col != 'is_vector']
@@ -282,11 +282,22 @@ class PostgresClient:
                     distinct_conditions.append(f"target.{cleaned_col} IS DISTINCT FROM {self._get_column_cast(cleaned_col, col_type)}")
                 else:
                     distinct_conditions.append(f"target.{cleaned_col} IS DISTINCT FROM source.{cleaned_col}")
-            update_set += f""",
-                is_vector = CASE 
-                    WHEN {' OR '.join(distinct_conditions)} THEN FALSE
-                    ELSE target.is_vector
-                END"""
+            
+            # Обновляем is_vector и updated_at только при изменении данных
+            if distinct_conditions:
+                update_set += f""",
+                    is_vector = CASE 
+                        WHEN {' OR '.join(distinct_conditions)} THEN FALSE
+                        ELSE target.is_vector
+                    END,
+                    updated_at = CASE 
+                        WHEN {' OR '.join(distinct_conditions)} THEN CURRENT_TIMESTAMP
+                        ELSE target.updated_at
+                    END"""
+            else:
+                update_set += """,
+                    is_vector = target.is_vector,
+                    updated_at = target.updated_at"""
             
             # For new records, set is_vector = FALSE by default
             insert_columns = []
@@ -360,8 +371,8 @@ class PostgresClient:
             WHEN MATCHED THEN
                 UPDATE SET {update_set}
             WHEN NOT MATCHED THEN
-                INSERT (id, {','.join(insert_columns[1:])}, is_vector)
-                VALUES (source.id, {','.join(insert_values[1:])}, FALSE);
+                INSERT (id, {','.join(insert_columns[1:])}, is_vector, updated_at)
+                VALUES (source.id, {','.join(insert_values[1:])}, FALSE, CURRENT_TIMESTAMP);
             """
             
             # Execute merge
@@ -386,4 +397,31 @@ class PostgresClient:
             
         except Exception as e:
             logger.exception(f"Error merging data into PostgreSQL: {str(e)}")
+            raise
+    
+    def execute_query(self, query: str) -> List[Dict]:
+        """
+        Execute a SQL query and return results
+        
+        Args:
+            query (str): SQL query to execute
+            
+        Returns:
+            List[Dict]: List of dictionaries with query results
+        """
+        try:
+            with self.engine.connect() as conn:
+                result = conn.execute(text(query))
+                
+                if result.returns_rows:
+                    # Convert result to list of dictionaries
+                    columns = result.keys()
+                    rows = [dict(zip(columns, row)) for row in result.fetchall()]
+                    return rows
+                else:
+                    # For non-SELECT queries, return empty list
+                    return []
+                    
+        except Exception as e:
+            logger.exception(f"Error executing query: {str(e)}")
             raise 

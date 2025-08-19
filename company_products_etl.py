@@ -1,242 +1,234 @@
+#!/usr/bin/env python3
 """
 Company Products ETL DAG
------------------------
-ETL DAG for syncing company products from Power BI to PostgreSQL.
+ETL процесс для извлечения данных о товарах компании из Power BI и загрузки в PostgreSQL
 """
 
+import sys
+import os
 from datetime import datetime, timedelta
 from airflow import DAG
 from airflow.operators.python import PythonOperator
-from airflow.utils.task_group import TaskGroup
 from airflow.models import Variable
-from loguru import logger
-import re
-import sys
-import os
 
-# Добавляем путь к проекту color_processing для импорта миграции
-sys.path.append('/var/www/vhosts/itland.uk/docker/dags/color_processing')
+# 🎯 КРИТИЧЕСКИ ВАЖНО: Настройка путей для utils.logger
+dags_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if dags_root not in sys.path:
+    sys.path.insert(0, dags_root)
 
-from oneC_etl.tasks.extract import extract_powerbi_data
-from oneC_etl.tasks.load import execute_etl_task
-from oneC_etl.config.variables import get_dataset_config
-from oneC_etl.utils.dax_utils import get_business_columns_from_dax, normalize_column_name
+# 🎯 Импортируем utils.logger
+from utils.logger import get_logger
 
+# Создаем logger для конкретного DAG'а
+logger = get_logger("company_products_etl", "oneC_etl")
+
+# Настройка DAG
 default_args = {
     'owner': 'airflow',
     'depends_on_past': False,
+    'start_date': datetime(2024, 1, 1),
     'email_on_failure': False,
     'email_on_retry': False,
     'retries': 1,
     'retry_delay': timedelta(minutes=5),
-    'execution_timeout': timedelta(hours=1),
 }
 
-def migrate_product_properties_task(**context):
-    """Migrate product_properties from companyproducts to product_properties table"""
-    try:
-        logger.info("🔄 Начинаем миграцию product_properties...")
-        
-        # Импортируем функцию миграции из color_processing
-        from database.scripts.migrate_product_properties import migrate_product_properties, create_product_properties_table
-        
-        # Создаем таблицу если её нет
-        logger.info("📋 Создаем таблицу product_properties если её нет...")
-        if not create_product_properties_table():
-            raise Exception("Не удалось создать таблицу product_properties")
-        
-        # Выполняем миграцию
-        logger.info("🔄 Мигрируем данные...")
-        if not migrate_product_properties():
-            raise Exception("Не удалось мигрировать данные product_properties")
-        
-        logger.success("✅ Миграция product_properties завершена успешно!")
-        
-        # Сохраняем результат в XCom
-        context['ti'].xcom_push(key='migration_result', value='success')
-        return 'success'
-        
-    except Exception as e:
-        logger.error(f"❌ Ошибка миграции product_properties: {e}")
-        context['ti'].xcom_push(key='migration_result', value='failed')
-        raise
-
-def process_datasets_task(**context):
-    """Process Power BI datasets and prepare ETL tasks"""
-    try:
-        logger.info("=== Starting process_datasets_task ===")
-        
-        # Get dataset configuration
-        dataset_name = 'company_products'
-        dataset_config = get_dataset_config(dataset_name)
-        
-        # Get DAX query from Airflow Variables
-        dax_queries = Variable.get("dax_queries", deserialize_json=True)
-        query_config = dax_queries[dataset_name]
-        dax_query = query_config["query"]
-
-        # Формируем маппинг колонок из DAX (используем исправленную функцию)
-        dax_columns = get_business_columns_from_dax(dax_query)
-        
-        # Создаем маппинг: оригинальные имена -> нормализованные имена
-        # Оригинальные имена из DAX: ID, Description, Brand, Category, Withdrawn_from_range, item_number, Product Properties
-        # Нормализованные имена: id, description, brand, category, withdrawn_from_range, item_number, product_properties
-        original_names = ['ID', 'Description', 'Brand', 'Category', 'Withdrawn_from_range', 'item_number', 'Product Properties']
-        
-        columns_mapping = {}
-        for i, original_name in enumerate(original_names):
-            if i < len(dax_columns):
-                columns_mapping[original_name] = dax_columns[i]
-
-        logger.info(f"Автоматически сгенерированный маппинг колонок: {columns_mapping}")
-
-        tasks = [{
-            "dataset_id": dataset_config["id"],
-            "source_table": dataset_config["source_table"],
-            "target_table": dataset_config["target_table"],
-            "dax_query": dax_query,
-            "mapping_name": "company_products",
-            "columns": columns_mapping
-        }]
-        
-        logger.info(f"Created ETL task for dataset '{dataset_name}'")
-        
-        # Push to XCom
-        context['ti'].xcom_push(key='etl_tasks', value=tasks)
-        return tasks
-        
-    except Exception as e:
-        logger.exception("Error in process_datasets_task")
-        raise
-
-def execute_etl_task_wrapper(**context):
-    """Wrapper function to handle data extraction and loading"""
-    try:
-        # Get tasks from XCom
-        tasks = context['ti'].xcom_pull(task_ids='etl_tasks.process_datasets', key='etl_tasks')
-        
-        if not tasks:
-            raise ValueError("No ETL tasks found in XCom")
-            
-        operations = []
-        
-        for task in tasks:
-            try:
-                # Extract data
-                data = extract_powerbi_data(task)
-                
-                # Load data
-                result = execute_etl_task(data, task)
-                operations.append(result)
-                
-            except Exception as e:
-                logger.exception(f"Error processing task {task['source_table']}")
-                operations.append({
-                    'source': task['source_table'],
-                    'target': task['target_table'],
-                    'error': str(e),
-                    'status': 'failed'
-                })
-        
-        # Push operations to XCom
-        context['ti'].xcom_push(key='etl_operations', value=operations)
-        return operations
-        
-    except Exception as e:
-        logger.exception("Error in execute_etl_task_wrapper")
-        raise
-
-def check_results(**context):
-    """Generate summary report of ETL operations"""
-    try:
-        operations = context['ti'].xcom_pull(
-            task_ids='etl_tasks.execute_etl',
-            key='etl_operations'
-        )
-        
-        migration_result = context['ti'].xcom_pull(
-            task_ids='etl_tasks.migrate_product_properties',
-            key='migration_result'
-        )
-        
-        if not operations:
-            logger.warning("No operations found in XCom")
-            return
-        
-        # Calculate statistics
-        total_ops = len(operations)
-        successful_ops = len([op for op in operations if op['status'] == 'success'])
-        failed_ops = len([op for op in operations if op['status'] == 'failed'])
-        total_records = sum(op.get('records', 0) for op in operations if op['status'] == 'success')
-        total_updated = sum(op.get('updated', 0) for op in operations if op['status'] == 'success')
-        
-        # Generate report
-        report = f"""
-ETL Operations Summary:
-----------------------
-Total Operations: {total_ops}
-Successful: {successful_ops}
-Failed: {failed_ops}
-Total Records Processed: {total_records}
-Total Records Updated: {total_updated}
-
-Product Properties Migration:
----------------------------
-Status: {'✅ SUCCESS' if migration_result == 'success' else '❌ FAILED'}
-
-Detailed Results:
-----------------"""
-        
-        for op in operations:
-            if op['status'] == 'success':
-                report += f"\n✓ {op['source']} → {op['target']}: {op.get('records', 0)} records processed, {op.get('updated', 0)} updated"
-            else:
-                report += f"\n✗ {op['source']} → {op['target']}: FAILED - {op.get('error', 'Unknown error')}"
-        
-        logger.info(report)
-        context['ti'].xcom_push(key='etl_report', value=report)
-        
-    except Exception as e:
-        logger.exception("Error in check_results")
-        raise
-
-# Create the DAG
-with DAG(
-    'CompanyProductsETL',  # Specific name for company products
+dag = DAG(
+    'CompanyProductsETL',
     default_args=default_args,
-    description='ETL for company products from Power BI to PostgreSQL',
-    schedule_interval='0 8 * * *',  # Run at 8 AM local time (UTC+5)
-    start_date=datetime(2024, 1, 1),
-    catchup=False
-) as dag:
-    
-    with TaskGroup('etl_tasks') as etl_group:
-        process_datasets = PythonOperator(
-            task_id='process_datasets',
-            python_callable=process_datasets_task,
-            provide_context=True
-        )
+    description='ETL процесс для извлечения данных о товарах компании из Power BI и загрузки в PostgreSQL',
+    schedule_interval='0 6 * * 1-5',  # Пн-Пт в 6:00 UTC (до ColorProcessingETL)
+    catchup=False,
+    tags=['etl', 'powerbi', 'postgres', 'company_products', 'product_properties']
+)
+
+def extract_powerbi_data_task(**context):
+    """Извлечение данных о товарах из Power BI через DAX"""
+    try:
+        logger.info("🔄 Начинаем извлечение данных о товарах из Power BI...")
         
-        execute_etl = PythonOperator(
-            task_id='execute_etl',
-            python_callable=execute_etl_task_wrapper,
-            provide_context=True
-        )
+        from oneC_etl.tasks.extract import extract_powerbi_data
         
-        migrate_product_properties = PythonOperator(
-            task_id='migrate_product_properties',
-            python_callable=migrate_product_properties_task,
-            provide_context=True
-        )
+        # Конфигурация задачи согласно документации
+        task_config = {
+            'dataset_id': '022e7796-b30f-44d4-b076-15331e612d47',  # 1cExportDataset (правильный датасет)
+            'dax_query': 'company_products',  # Загружается из Airflow Variables
+            'columns': {
+                'CompanyProducts[ID]': 'id',
+                'CompanyProducts[Description]': 'description',
+                'CompanyProducts[Brand]': 'brand',
+                'CompanyProducts[Category]': 'category',
+                'CompanyProducts[Withdrawn_from_range]': 'withdrawn_from_range',
+                'CompanyProducts[item_number]': 'item_number',
+                'УТ_Товарные категории[_description]': 'product_category',
+                'УТ_РСвДополнительныеСведения2_0[Под заказ]': 'on_order',
+                'Выводится_без_остатков': 'is_vector',
+                'CountRowsУТ_РСвДополнительныеСведения2_0': 'count_rows'
+            }
+        }
         
-        # Set task dependencies within the group
-        process_datasets >> execute_etl >> migrate_product_properties
-    
-    check_results = PythonOperator(
-        task_id='check_results',
-        python_callable=check_results,
-        provide_context=True
-    )
-    
-    # Set task group dependency
-    etl_group >> check_results 
+        result = extract_powerbi_data(task_config)
+        
+        logger.info(f"✅ Извлечение данных завершено: {len(result)} строк")
+        
+        # Итоговая плашка для задачи extract
+        logger.info("")
+        logger.info("=" * 80)
+        logger.info("🎉 ЗАДАЧА EXTRACT - ВЫПОЛНЕНА УСПЕШНО")
+        logger.info(f"📊 Извлечено {len(result)} строк из Power BI")
+        logger.info("=" * 80)
+        logger.info("")
+        
+        return result
+        
+    except Exception as e:
+        logger.exception(f"❌ Ошибка извлечения данных: {str(e)}")
+        raise
+
+def load_to_postgres_task(**context):
+    """Загрузка данных о товарах в PostgreSQL"""
+    try:
+        logger.info("🔄 Начинаем загрузку данных в PostgreSQL...")
+        
+        from oneC_etl.tasks.load import execute_etl_task
+        
+        # Получаем данные из предыдущей задачи
+        ti = context['ti']
+        data = ti.xcom_pull(task_ids='extract_powerbi_data')
+        
+        if data is None:
+            raise ValueError("Нет данных для загрузки")
+        
+        # Преобразуем список словарей в pandas DataFrame
+        import pandas as pd
+        df = pd.DataFrame(data)
+        
+        # Конфигурация загрузки согласно документации
+        task_config = {
+            'source_table': 'powerbi_company_products',
+            'target_table': 'companyproducts',
+            'mapping_name': 'company_products'
+        }
+        
+        result = execute_etl_task(df, task_config)
+        
+        logger.info(f"✅ Загрузка данных завершена: {result}")
+        
+        # Итоговая плашка для задачи load
+        logger.info("")
+        logger.info("=" * 80)
+        logger.info("🎉 ЗАДАЧА LOAD - ВЫПОЛНЕНА УСПЕШНО")
+        logger.info(f"📊 Загружено {result.get('total_rows', 0)} строк в PostgreSQL")
+        logger.info("=" * 80)
+        logger.info("")
+        
+        return result
+        
+    except Exception as e:
+        logger.exception(f"❌ Ошибка загрузки данных: {str(e)}")
+        raise
+
+
+
+def validate_data_task(**context):
+    """Валидация загруженных данных о товарах"""
+    try:
+        logger.info("🔄 Начинаем валидацию данных о товарах...")
+        
+        from oneC_etl.services.postgres.client import PostgresClient
+        
+        db_client = PostgresClient()
+        
+        # Проверяем количество загруженных товаров
+        products_query = """
+        SELECT 
+            COUNT(*) as total_products,
+            COUNT(CASE WHEN description IS NOT NULL THEN 1 END) as products_with_description,
+            COUNT(CASE WHEN brand IS NOT NULL THEN 1 END) as products_with_brand,
+            COUNT(CASE WHEN category IS NOT NULL THEN 1 END) as products_with_category,
+            COUNT(CASE WHEN item_number IS NOT NULL THEN 1 END) as products_with_item_number
+        FROM companyproducts
+        """
+        
+        products_result = db_client.execute_query(products_query)
+        
+        if products_result:
+            products_stats = products_result[0]
+            
+            logger.info(f"📊 Статистика товаров: {products_stats}")
+            
+            # Проверяем качество данных
+            validation_status = "success"
+            if products_stats['total_products'] == 0:
+                validation_status = "error"
+                logger.error("❌ В таблице нет товаров")
+            elif products_stats['products_with_description'] == 0:
+                validation_status = "warning"
+                logger.warning("⚠️ У товаров нет описаний")
+            elif products_stats['products_with_brand'] == 0:
+                validation_status = "warning"
+                logger.warning("⚠️ У товаров нет брендов")
+            else:
+                logger.info("✅ Данные о товарах загружены корректно")
+            
+            result = {
+                "status": validation_status,
+                "products": products_stats,
+                "message": f"Проверено {products_stats['total_products']} товаров"
+            }
+            
+            # Итоговая плашка для задачи validate
+            logger.info("")
+            logger.info("=" * 80)
+            logger.info("🎉 ЗАДАЧА VALIDATE - ВЫПОЛНЕНА УСПЕШНО")
+            logger.info(f"📊 Проверено {products_stats['total_products']} товаров")
+            logger.info("=" * 80)
+            logger.info("")
+            
+            # ГЛАВНАЯ ИТОГОВАЯ ПЛАШКА DAG'а
+            logger.info("")
+            logger.info("")
+            logger.info("=" * 80)
+            logger.info("🎉 DAG CompanyProductsETL - ВЫПОЛНЕН УСПЕШНО")
+            logger.info("=" * 80)
+            logger.info("")
+            logger.info("")
+            
+            return result
+        else:
+            logger.warning("⚠️ Не удалось получить результаты валидации")
+            return {"status": "error", "message": "Validation failed"}
+        
+    except Exception as e:
+        logger.exception(f"❌ Ошибка валидации: {str(e)}")
+        raise
+
+# Создание задач согласно архитектуре из документации
+extract_operator = PythonOperator(
+    task_id='extract_powerbi_data',
+    python_callable=extract_powerbi_data_task,
+    dag=dag
+)
+
+load_operator = PythonOperator(
+    task_id='load_to_postgres',
+    python_callable=load_to_postgres_task,
+    dag=dag
+)
+
+
+
+validate_operator = PythonOperator(
+    task_id='validate_data',
+    python_callable=validate_data_task,
+    dag=dag
+)
+
+# Настройка зависимостей согласно потоку данных:
+# 1. Извлечение данных из Power BI через DAX
+# 2. Загрузка в таблицу companyproducts
+# 3. Валидация загруженных данных о товарах
+extract_operator >> load_operator >> validate_operator
+
+if __name__ == "__main__":
+    dag.cli()

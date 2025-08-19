@@ -7,7 +7,7 @@ from airflow.models import Variable
 
 # Default configuration values
 DEFAULT_CONFIG = {
-    'batch_size': 1000,
+    'batch_size': 2000,
     'max_retries': 3,
     'retry_delay': 300,  # seconds
     'enable_vector_updates': True,

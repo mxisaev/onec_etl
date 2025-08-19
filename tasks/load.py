@@ -24,11 +24,7 @@ def execute_etl_task(data, task):
         dict: Operation statistics
     """
     try:
-        logger.info(f"Loading data to {task['target_table']}")
-        
-        # Debug: выводим первые строки DataFrame до маппинга
-        logger.info(f"DataFrame columns before mapping: {data.columns.tolist()}")
-        logger.info(f"First 3 rows before mapping:\n{data.head(3)}")
+        logger.info(f"🔄 Загружаем данные в таблицу {task['target_table']}")
         
         # Get configuration
         config = get_config()
@@ -45,10 +41,6 @@ def execute_etl_task(data, task):
         # Rename columns according to mapping
         data = data.rename(columns=mapping['columns'])
         
-        # Debug: выводим первые строки DataFrame после маппинга
-        logger.info(f"DataFrame columns after mapping: {data.columns.tolist()}")
-        logger.info(f"First 3 rows after mapping:\n{data.head(3)}")
-        
         # Use 'id' as the primary key
         key_columns = ['id']
         
@@ -60,8 +52,6 @@ def execute_etl_task(data, task):
         # Исключаем технические поля и идентификаторы (оставляем только бизнес-характеристики)
         technical_fields = {'id', 'item_number', 'is_vector', 'upload_timestamp', 'updated_at', 'vector'}
         columns_for_change_analysis = [col for col in business_columns if col not in technical_fields]
-        
-        logger.info(f"Колонки для анализа изменений (сброс is_vector): {columns_for_change_analysis}")
 
         # Load data in batches
         batch_size = config['batch_size']
@@ -97,7 +87,7 @@ def execute_etl_task(data, task):
             processed_rows += len(batch)
             updated_rows += result.get('updated_rows', 0)
             
-            logger.info(f"Processed {processed_rows}/{total_rows} rows")
+            logger.info(f"📦 Обработано {processed_rows}/{total_rows} строк")
         
         stats = {
             'source': task['source_table'],
@@ -108,11 +98,11 @@ def execute_etl_task(data, task):
             'status': 'success'
         }
         
-        logger.info(f"Successfully loaded data to {task['target_table']}")
+        logger.info(f"✅ Данные успешно загружены в таблицу {task['target_table']}")
         return stats
         
     except Exception as e:
-        logger.exception(f"Error loading data to PostgreSQL: {str(e)}")
+        logger.exception(f"❌ Ошибка загрузки данных в PostgreSQL: {str(e)}")
         return {
             'source': task['source_table'],
             'target': task['target_table'],
