@@ -24,11 +24,7 @@ def execute_etl_task(data, task):
         dict: Operation statistics
     """
     try:
-        logger.info(f"Loading data to {task['target_table']}")
-        
-        # Debug: выводим первые строки DataFrame до маппинга
-        logger.info(f"DataFrame columns before mapping: {data.columns.tolist()}")
-        logger.info(f"First 3 rows before mapping:\n{data.head(3)}")
+        logger.info(f"🔄 Загружаем данные в таблицу {task['target_table']}")
         
         # Get configuration
         config = get_config()
@@ -45,23 +41,25 @@ def execute_etl_task(data, task):
         # Rename columns according to mapping
         data = data.rename(columns=mapping['columns'])
         
-        # Debug: выводим первые строки DataFrame после маппинга
-        logger.info(f"DataFrame columns after mapping: {data.columns.tolist()}")
-        logger.info(f"First 3 rows after mapping:\n{data.head(3)}")
+        # Определяем ключевые колонки в зависимости от таблицы
+        if task['target_table'] == 'partners':
+            # Для partners используем композитный ключ из 1С
+            key_columns = ['id_1c_partner', 'id_1c_contact']
+            if not all(col in data.columns for col in key_columns):
+                raise ValueError(f"Required columns {key_columns} not found in data for table {task['target_table']}")
+        else:
+            # Для других таблиц используем 'id'
+            key_columns = ['id']
+            if 'id' not in data.columns:
+                raise ValueError(f"Required column 'id' not found in data for table {task['target_table']}")
         
-        # Use 'id' as the primary key
-        key_columns = ['id']
+        # Определяем колонки для анализа изменений (исключаем технические поля)
+        if task['target_table'] == 'partners':
+            technical_fields = {'partner_uid', 'id_1c_partner', 'id_1c_contact', 'is_vector', 'created_at', 'updated_at', 'vector', 'extracted_at'}
+        else:
+            technical_fields = {'id', 'item_number', 'is_vector', 'upload_timestamp', 'updated_at', 'vector', 'extracted_at'}
         
-        if 'id' not in data.columns:
-            raise ValueError(f"Required column 'id' not found in data for table {task['target_table']}")
-        
-        # Получаем бизнес-колонки из DAX (для анализа изменений)
-        business_columns = get_business_columns_from_dax(mapping['query'])
-        # Исключаем технические поля и идентификаторы (оставляем только бизнес-характеристики)
-        technical_fields = {'id', 'item_number', 'is_vector', 'upload_timestamp', 'updated_at', 'vector'}
-        columns_for_change_analysis = [col for col in business_columns if col not in technical_fields]
-        
-        logger.info(f"Колонки для анализа изменений (сброс is_vector): {columns_for_change_analysis}")
+        columns_for_change_analysis = [col for col in data.columns if col not in technical_fields]
 
         # Load data in batches
         batch_size = config['batch_size']
@@ -76,7 +74,11 @@ def execute_etl_task(data, task):
             def get_column_type(col_name):
                 if col_name == 'id':
                     return 'UUID'
-                elif col_name in ['withdrawn_from_range', 'on_order', 'is_vector']:
+                elif col_name == 'partner_uid':
+                    return 'UUID'
+                elif col_name in ['id_1c_partner', 'id_1c_contact']:
+                    return 'VARCHAR'
+                elif col_name in ['withdrawn_from_range', 'on_order', 'is_vector', 'is_client', 'is_supplier']:
                     return 'BOOLEAN'
                 else:
                     return 'TEXT'
@@ -97,7 +99,7 @@ def execute_etl_task(data, task):
             processed_rows += len(batch)
             updated_rows += result.get('updated_rows', 0)
             
-            logger.info(f"Processed {processed_rows}/{total_rows} rows")
+            logger.info(f"📦 Обработано {processed_rows}/{total_rows} строк")
         
         stats = {
             'source': task['source_table'],
@@ -108,11 +110,11 @@ def execute_etl_task(data, task):
             'status': 'success'
         }
         
-        logger.info(f"Successfully loaded data to {task['target_table']}")
+        logger.info(f"✅ Данные успешно загружены в таблицу {task['target_table']}")
         return stats
         
     except Exception as e:
-        logger.exception(f"Error loading data to PostgreSQL: {str(e)}")
+        logger.exception(f"❌ Ошибка загрузки данных в PostgreSQL: {str(e)}")
         return {
             'source': task['source_table'],
             'target': task['target_table'],

@@ -1,0 +1,13 @@
+{
+    "company_products": {
+        "id": "022e7796-b30f-44d4-b076-15331e612d47",
+        "source_table": "CompanyProducts",
+        "target_table": "companyproducts"
+    },
+    "partners": {
+        "id": "afb5ea40-5805-4b0b-a082-81ca7333be85",
+        "source_table": "Partners",
+        "target_table": "partners",
+        "description": "Partners dataset from Power BI"
+    }
+}

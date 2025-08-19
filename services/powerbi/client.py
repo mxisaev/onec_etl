@@ -91,9 +91,9 @@ class PowerBIClient:
             }
             
             # Log request details (excluding sensitive data)
-            logger.info(f"Request URL: {url}")
-            logger.info(f"Request headers: {json.dumps({k: v for k, v in headers.items() if k != 'Authorization'})}")
-            logger.info(f"Request body: {json.dumps(body, indent=2, ensure_ascii=False)}")
+            # logger.info(f"Request URL: {url}")  # Убрано по требованию
+            # logger.info(f"Request headers: {json.dumps({k: v for k, v in headers.items() if k != 'Authorization'})}")  # Убрано по требованию
+            # logger.info(f"Request body: {json.dumps(body, indent=2, ensure_ascii=False)}")  # Убрано по требованию
             
             # Execute request
             response = requests.post(url, headers=headers, json=body)

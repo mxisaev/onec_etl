@@ -77,65 +77,55 @@ def test_dax_query(access_token, workspace_id, dataset_id, query, query_name):
 
 def main():
     """Основная функция диагностики"""
-    print("=== Диагностика DAX запросов Power BI ===")
+    print("=== Диагностика DAX запросов Power BI для поставщиков ===")
     
     workspace_id = Variable.get('powerbi_workspace_id')
-    dataset_id = '022e7796-b30f-44d4-b076-15331e612d47'  # ID датасета из списка отчётов
+    dataset_id = 'afb5ea40-5805-4b0b-a082-81ca7333be85'  # ID датасета поставщиков
     
     try:
         # Получаем токен
         access_token = get_access_token()
         print("✓ Токен получен успешно")
         
-        # Тестируем различные варианты DAX запросов
+        # Тестируем различные варианты DAX запросов для поставщиков
         test_queries = [
             {
                 "name": "Простейший запрос - только EVALUATE",
-                "query": "EVALUATE 'CompanyProducts'"
+                "query": "EVALUATE 'Suppliers'"
             },
             {
                 "name": "С ограничением TOPN 10",
-                "query": "EVALUATE TOPN(10, 'CompanyProducts', 'CompanyProducts'[ID])"
+                "query": "EVALUATE TOPN(10, 'Suppliers', 'Suppliers'[ID])"
             },
             {
                 "name": "С выбором конкретных колонок",
-                "query": "EVALUATE SELECTCOLUMNS('CompanyProducts', 'ID', 'CompanyProducts'[ID], 'Description', 'CompanyProducts'[Description])"
+                "query": "EVALUATE SELECTCOLUMNS('Suppliers', 'ID', 'Suppliers'[ID], 'Name', 'Suppliers'[Name])"
             },
             {
                 "name": "С фильтрацией",
-                "query": "EVALUATE FILTER('CompanyProducts', 'CompanyProducts'[ID] > 0)"
+                "query": "EVALUATE FILTER('Suppliers', 'Suppliers'[Status] = \"active\")"
             },
             {
                 "name": "С SUMMARIZECOLUMNS (простой)",
-                "query": "EVALUATE SUMMARIZECOLUMNS('CompanyProducts'[ID], 'CompanyProducts'[Description])"
+                "query": "EVALUATE SUMMARIZECOLUMNS('Suppliers'[ID], 'Suppliers'[Name], 'Suppliers'[Code])"
             },
             {
                 "name": "С SUMMARIZECOLUMNS и TOPN",
-                "query": "EVALUATE TOPN(10, SUMMARIZECOLUMNS('CompanyProducts'[ID], 'CompanyProducts'[Description]), 'CompanyProducts'[ID])"
+                "query": "EVALUATE TOPN(10, SUMMARIZECOLUMNS('Suppliers'[ID], 'Suppliers'[Name], 'Suppliers'[Code]), 'Suppliers'[ID])"
             },
             {
-                "name": "Сложный запрос с Product Properties",
+                "name": "Полный запрос для поставщиков",
                 "query": """
 EVALUATE
 SUMMARIZECOLUMNS(
-    'CompanyProducts'[ID],
-    'CompanyProducts'[Description],
-    "Product Properties", 
-    VAR CurrentProduct = SELECTEDVALUE('УТ_Номенклатура'[Артикул], "No Product Selected")
-    RETURN
-    CONCATENATEX(
-        TOPN(
-            1000,
-            FILTER(
-                'Char_table',
-                [Артикул] = CurrentProduct
-            ),
-            [SortOrder]
-        ),
-        [_description] & ": " & [Значение],
-        " | ",
-        [SortOrder]
-    )
+    'Suppliers'[ID],
+    'Suppliers'[Name],
+    'Suppliers'[Code],
+    'Suppliers'[INN],
+    'Suppliers'[MainManager],
+    'Suppliers'[Status],
+    'Suppliers'[CreatedAt],
+    'Suppliers'[UpdatedAt]
 )
 """
             }
@@ -152,13 +142,13 @@ SUMMARIZECOLUMNS(
         
         # Новый тест: DAX из Airflow Variable
         dax_queries = json.loads(Variable.get('dax_queries'))
-        query = dax_queries['company_products']['query']
+        query = dax_queries['suppliers']['query']
         test_dax_query(
             access_token,
             workspace_id,
             dataset_id,
             query,
-            "company_products из Airflow Variable (актуальный DAX)"
+            "suppliers из Airflow Variable (актуальный DAX)"
         )
         
     except Exception as e:

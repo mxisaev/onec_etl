@@ -82,7 +82,31 @@ case $choice in
     2)
         # Test DAG with full logs
         print_status "Testing DAG with full logs: $DAG_ID"
-        docker compose exec airflow-webserver airflow dags test $DAG_ID $EXECUTION_DATE
+        print_status "Starting DAG test... (this may take several minutes)"
+        
+        # Execute test with timeout (10 minutes max)
+        print_status "Setting timeout: 10 minutes maximum"
+        timeout 600 docker compose exec airflow-webserver airflow dags test $DAG_ID $EXECUTION_DATE > /tmp/dag_test_output.log 2>&1
+        TEST_EXIT_CODE=$?
+        
+        # Read and display the output
+        if [ -f /tmp/dag_test_output.log ]; then
+            TEST_OUTPUT=$(cat /tmp/dag_test_output.log)
+            rm -f /tmp/dag_test_output.log
+        else
+            TEST_OUTPUT="No output captured"
+        fi
+        
+        # Display the output
+        echo "$TEST_OUTPUT"
+        
+        # Check exit code and provide feedback
+        if [ $TEST_EXIT_CODE -eq 0 ]; then
+            print_success "DAG test completed successfully"
+        else
+            print_warning "DAG test completed with warnings or errors"
+            print_status "Check the output above for details"
+        fi
         ;;
     3)
         # Trigger DAG first
