@@ -37,7 +37,7 @@ dag = DAG(
     'SuppliersETL',
     default_args=default_args,
     description='ETL процесс для загрузки данных о партнерах (поставщиках и клиентах) из Power BI в PostgreSQL',
-    schedule_interval='0 6,10 * * 1-5',  # Пн-Пт в 6:00 и 10:00 UTC (11:00 и 15:00 UTC+5)
+    schedule_interval='50 6,10 * * 1-5',  # Пн-Пт в 6:50 и 10:50 UTC (11:50 и 15:50 UTC+5)
     catchup=False,
     tags=['etl', 'powerbi', 'postgres', 'suppliers', 'partners']
 )
