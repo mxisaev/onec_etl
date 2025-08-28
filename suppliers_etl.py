@@ -45,13 +45,18 @@ dag = DAG(
 def extract_suppliers_data_task(**context):
     """Извлечение данных о партнерах из Power BI через DAX"""
     try:
-        logger.info("🔄 Начинаем извлечение данных о партнерах (поставщиках) из Power BI...")
+        logger.info("🔄 Начинаем извлечение данных о партнерах из Power BI...")
         
         from suppliers_etl.tasks.extract import extract_powerbi_data
         
+        # Получаем конфигурацию dataset из Airflow Variables
+        from airflow.models import Variable
+        datasets = Variable.get('datasets', deserialize_json=True)
+        partners_dataset = datasets['partners']
+        
         # Конфигурация задачи согласно документации
         task_config = {
-            'dataset_id': 'afb5ea40-5805-4b0b-a082-81ca7333be85',  # Partners dataset
+            'dataset_id': partners_dataset['id'],  # Получаем из переменной datasets
             'dax_query_key': 'partners',  # Используем ключ 'partners' из Airflow Variables
             'columns': {
                 'УТ_Партнеры[Партнер.УТ11]': 'partner',
@@ -67,8 +72,6 @@ def extract_suppliers_data_task(**context):
         }
         
         result = extract_powerbi_data(task_config)
-        
-        logger.info(f"✅ Извлечение данных о партнерах завершено: {len(result)} строк")
         return result
         
     except Exception as e:
@@ -78,7 +81,7 @@ def extract_suppliers_data_task(**context):
 def load_partners_to_postgres_task(**context):
     """Загрузка данных о партнерах в PostgreSQL"""
     try:
-        logger.info("🔄 Начинаем загрузку данных о партнерах в PostgreSQL...")
+        logger.info("🔄 Начинаем загрузку данных в PostgreSQL...")
         
         # Горячая перезагрузка модулей, чтобы воркер подцепил обновленный PostgresClient/merge
         import importlib
@@ -100,16 +103,17 @@ def load_partners_to_postgres_task(**context):
         df = pd.DataFrame(data)
         
         logger.info(f"📊 DataFrame создан: {len(df)} строк, {len(df.columns)} колонок")
-        logger.info(f"📋 Колонки: {list(df.columns)}")
+        
+        # Получаем только названия таблиц для PostgreSQL
+        from airflow.models import Variable
+        datasets = Variable.get('datasets', deserialize_json=True)
         
         # Конфигурация загрузки согласно документации
         task_config = {
-            'source_table': 'powerbi_suppliers',
-            'target_table': 'partners',
+            'source_table': datasets['partners']['source_table'],
+            'target_table': datasets['partners']['target_table'],
             'mapping_name': 'partners'
         }
-        
-        logger.info(f"🔧 Конфигурация загрузки: {task_config}")
         
         # Проводим загрузку напрямую через PostgresClient, чтобы гарантировать использование актуального MERGE
         from suppliers_etl.config.dax_mappings import get_dax_mapping
@@ -153,7 +157,6 @@ def load_partners_to_postgres_task(**context):
             columns_for_change_analysis=columns_for_change_analysis
         )
         
-        logger.info(f"✅ Загрузка данных о партнерах завершена: {result}")
         return result
         
     except Exception as e:
@@ -163,8 +166,6 @@ def load_partners_to_postgres_task(**context):
 def validate_partners_data_task(**context):
     """Валидация загруженных данных о партнерах"""
     try:
-        logger.info("🔄 Начинаем валидацию данных о партнерах...")
-        
         from suppliers_etl.services.postgres.client import PostgresClient
         
         db_client = PostgresClient()
@@ -187,16 +188,6 @@ def validate_partners_data_task(**context):
         if result and len(result) > 0:
             stats = result[0]
             
-            # Красиво форматируем статистику партнеров
-            logger.info("📊 Статистика партнеров:")
-            logger.info(f"   • Всего партнеров: {stats['total_partners']}")
-            logger.info(f"   • С названием: {stats['partners_with_name']}")
-            logger.info(f"   • С контактом: {stats['partners_with_contact']}")
-            logger.info(f"   • С email: {stats['partners_with_email']}")
-            logger.info(f"   • С менеджером: {stats['partners_with_manager']}")
-            logger.info(f"   • Клиентов: {stats['total_clients']}")
-            logger.info(f"   • Поставщиков: {stats['total_suppliers']}")
-            
             # Проверяем качество данных
             validation_status = "success"
             if stats['total_partners'] == 0:
@@ -215,11 +206,6 @@ def validate_partners_data_task(**context):
             composite_result = db_client.execute_query(composite_key_query)
             if composite_result and len(composite_result) > 0:
                 composite_stats = composite_result[0]
-                
-                # Красиво форматируем статистику композитных ключей
-                logger.info("🔑 Статистика композитных ключей:")
-                logger.info(f"   • Всего записей: {composite_stats['total_records']}")
-                logger.info(f"   • Уникальных ключей: {composite_stats['unique_composite_keys']}")
                 
                 if composite_stats['total_records'] != composite_stats['unique_composite_keys']:
                     logger.warning("⚠️ Обнаружены дублирующиеся композитные ключи")
@@ -242,8 +228,6 @@ def validate_partners_data_task(**context):
 def generate_supplier_report_task(**context):
     """Генерация отчета по поставщикам"""
     try:
-        logger.info("🔄 Генерируем отчет по поставщикам...")
-        
         from suppliers_etl.services.postgres.client import PostgresClient
         
         db_client = PostgresClient()
@@ -254,7 +238,7 @@ def generate_supplier_report_task(**context):
             'Общая статистика' as report_section,
             COUNT(*) as total_partners,
             COUNT(CASE WHEN COALESCE(is_client,false) = TRUE THEN 1 END) as total_clients,
-            COUNT(CASE WHEN COALESCE(is_supplier,false) = TRUE THEN 1 END) as total_suppliers,
+            COUNT(CASE WHEN COALESCE(is_client,false) = TRUE THEN 1 END) as total_suppliers,
             COUNT(CASE WHEN COALESCE(is_client,false) = TRUE AND COALESCE(is_supplier,false) = TRUE THEN 1 END) as client_suppliers,
             NULL::integer as unique_roles,
             NULL::integer as managers,
@@ -280,24 +264,6 @@ def generate_supplier_report_task(**context):
         result = db_client.execute_query(report_query)
         
         if result and len(result) > 0:
-            logger.info("📊 Отчет по поставщикам сгенерирован:")
-            
-            # Красиво форматируем каждую секцию отчета
-            for row in result:
-                section = row.get('report_section')
-                if section == 'Общая статистика':
-                    logger.info("📈 Общая статистика:")
-                    logger.info(f"   • Всего партнеров: {row.get('total_partners', 0)}")
-                    logger.info(f"   • Клиентов: {row.get('total_clients', 0)}")
-                    logger.info(f"   • Поставщиков: {row.get('total_suppliers', 0)}")
-                    logger.info(f"   • Клиентов-поставщиков: {row.get('client_suppliers', 0)}")
-                elif section == 'По ролям контактов':
-                    logger.info("👥 По ролям контактов:")
-                    logger.info(f"   • Уникальных ролей: {row.get('unique_roles', 0)}")
-                    logger.info(f"   • Менеджеров: {row.get('managers', 0)}")
-                    logger.info(f"   • Директоров: {row.get('directors', 0)}")
-                    logger.info(f"   • Других ролей: {row.get('other_roles', 0)}")
-            
             return {"status": "success", "report_rows": len(result)}
         else:
             logger.warning("⚠️ Не удалось сгенерировать отчет")
@@ -341,6 +307,7 @@ def final_summary_task(**context):
         else:
             logger.warning("⚠️ Некоторые задачи завершились с предупреждениями")
         
+        # Добавляем финальную строку
         logger.info("🎯 ========================================")
         
         return {

@@ -12,7 +12,7 @@
 
 **Запуск:**
 ```bash
-docker compose exec airflow-webserver python /opt/airflow/dags/oneC_etl/tests/test_dax_diagnostic.py
+docker exec docker-airflow-webserver-1 python3 /opt/airflow/dags/suppliers_etl/tests/test_dax_diagnostic.py
 ```
 
 ### `list_reports.py`
@@ -23,7 +23,7 @@ docker compose exec airflow-webserver python /opt/airflow/dags/oneC_etl/tests/te
 
 **Запуск:**
 ```bash
-docker compose exec airflow-webserver python /opt/airflow/dags/oneC_etl/tests/list_reports.py
+docker exec docker-airflow-webserver-1 python3 /opt/airflow/dags/suppliers_etl/tests/list_reports.py
 ```
 
 ### `get_reports.py`
@@ -34,7 +34,29 @@ docker compose exec airflow-webserver python /opt/airflow/dags/oneC_etl/tests/li
 
 **Запуск:**
 ```bash
-docker compose exec airflow-webserver python /opt/airflow/dags/oneC_etl/tests/get_reports.py
+docker exec docker-airflow-webserver-1 python3 /opt/airflow/dags/suppliers_etl/tests/get_reports.py
+```
+
+### `test_suppliers_dax.py`
+**Тест основного DAX запроса**
+- Тестирует DAX запрос для партнеров
+- Проверяет подключение к Power BI API
+- Полезен для диагностики основных проблем
+
+**Запуск:**
+```bash
+docker exec docker-airflow-webserver-1 python3 /opt/airflow/dags/suppliers_etl/tests/test_suppliers_dax.py
+```
+
+### `test_simplified_dax.py`
+**Тест упрощенного DAX запроса**
+- Тестирует упрощенную версию DAX без JOIN'ов
+- Проверяет работу с основной таблицей УТ_Партнеры
+- Помогает диагностировать проблемы сложных запросов
+
+**Запуск:**
+```bash
+docker exec docker-airflow-webserver-1 python3 /opt/airflow/dags/suppliers_etl/tests/test_simplified_dax.py
 ```
 
 ## Использование

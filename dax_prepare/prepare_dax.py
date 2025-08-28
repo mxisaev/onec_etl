@@ -68,8 +68,13 @@ def prepare_queries() -> Dict[str, Dict[str, str]]:
         # Process each query
         result = {}
         for query_name, query in query_vars.items():
-            # Convert query name to DAG name format
-            dag_name = query_name.lower().replace('_query', '')
+            # Convert query name to DAG name format with special mapping
+            if query_name == 'PARTNERS_QUERY':
+                dag_name = 'partners'
+            elif query_name == 'COMPANY_PRODUCTS_QUERY':
+                dag_name = 'company_products'
+            else:
+                dag_name = query_name.lower().replace('_query', '')
             
             # Clean and store query
             cleaned_query = clean_dax_query(query)
@@ -78,7 +83,7 @@ def prepare_queries() -> Dict[str, Dict[str, str]]:
                 "query": cleaned_query
             }
             
-            logger.info(f"Processed query: {query_name}")
+            logger.info(f"Processed query: {query_name} -> {dag_name}")
             logger.debug(f"Original query: {query}")
             logger.debug(f"Cleaned query: {cleaned_query}")
         

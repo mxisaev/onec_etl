@@ -57,10 +57,22 @@ def test_dax_query(access_token, workspace_id, dataset_id, query, query_name):
             if result.get('results') and result['results'][0].get('tables'):
                 tables = result['results'][0]['tables']
                 for i, table in enumerate(tables):
-                    print(f"Таблица {i+1}: {len(table.get('rows', []))} строк")
+                    rows_count = len(table.get('rows', []))
+                    print(f"Таблица {i+1}: {rows_count} строк")
                     if table.get('rows'):
                         print(f"Первая строка: {table['rows'][0]}")
                         print(f"Колонки: {[col.get('name') for col in table.get('columns', [])]}")
+                        
+                        # Добавляем детальную информацию о структуре ответа
+                        print(f"📊 Структура ответа:")
+                        print(f"   • Результатов: {len(result.get('results', []))}")
+                        print(f"   • Таблиц в результате 0: {len(tables)}")
+                        print(f"   • Строк в таблице {i+1}: {rows_count}")
+                        if 'columns' in table:
+                            print(f"   • Колонок в таблице {i+1}: {len(table['columns'])}")
+            else:
+                print("⚠️ Структура ответа не содержит таблиц или строк")
+                print(f"📊 Детали ответа: {json.dumps(result, indent=2, ensure_ascii=False)}")
         else:
             print(f"❌ ОШИБКА! Статус: {resp.status_code}")
             print(f"Ответ: {resp.text}")
@@ -77,10 +89,10 @@ def test_dax_query(access_token, workspace_id, dataset_id, query, query_name):
 
 def main():
     """Основная функция диагностики"""
-    print("=== Диагностика DAX запросов Power BI для поставщиков ===")
+    print("=== Диагностика DAX запросов Power BI для партнеров ===")
     
     workspace_id = Variable.get('powerbi_workspace_id')
-    dataset_id = 'afb5ea40-5805-4b0b-a082-81ca7333be85'  # ID датасета поставщиков
+    dataset_id = 'afb5ea40-5805-4b0b-a082-81ca7333be85'  # ID датасета партнеров
     
     try:
         # Получаем токен
@@ -91,41 +103,37 @@ def main():
         test_queries = [
             {
                 "name": "Простейший запрос - только EVALUATE",
-                "query": "EVALUATE 'Suppliers'"
+                "query": "EVALUATE 'УТ_Партнеры'"
             },
             {
                 "name": "С ограничением TOPN 10",
-                "query": "EVALUATE TOPN(10, 'Suppliers', 'Suppliers'[ID])"
+                "query": "EVALUATE TOPN(10, 'УТ_Партнеры', 'УТ_Партнеры'[id_1c])"
             },
             {
                 "name": "С выбором конкретных колонок",
-                "query": "EVALUATE SELECTCOLUMNS('Suppliers', 'ID', 'Suppliers'[ID], 'Name', 'Suppliers'[Name])"
+                "query": "EVALUATE SELECTCOLUMNS('УТ_Партнеры', 'id_1c', 'УТ_Партнеры'[id_1c], 'Партнер.УТ11', 'УТ_Партнеры'[Партнер.УТ11])"
             },
             {
-                "name": "С фильтрацией",
-                "query": "EVALUATE FILTER('Suppliers', 'Suppliers'[Status] = \"active\")"
+                "name": "С фильтрацией по поставщикам",
+                "query": "EVALUATE FILTER('УТ_Партнеры', 'УТ_Партнеры'[is_supplier] = TRUE)"
             },
             {
                 "name": "С SUMMARIZECOLUMNS (простой)",
-                "query": "EVALUATE SUMMARIZECOLUMNS('Suppliers'[ID], 'Suppliers'[Name], 'Suppliers'[Code])"
+                "query": "EVALUATE SUMMARIZECOLUMNS('УТ_Партнеры'[id_1c], 'УТ_Партнеры'[Партнер.УТ11], 'УТ_Партнеры'[is_supplier])"
             },
             {
                 "name": "С SUMMARIZECOLUMNS и TOPN",
-                "query": "EVALUATE TOPN(10, SUMMARIZECOLUMNS('Suppliers'[ID], 'Suppliers'[Name], 'Suppliers'[Code]), 'Suppliers'[ID])"
+                "query": "EVALUATE TOPN(10, SUMMARIZECOLUMNS('УТ_Партнеры'[id_1c], 'УТ_Партнеры'[Партнер.УТ11], 'УТ_Партнеры'[is_supplier]), 'УТ_Партнеры'[id_1c])"
             },
             {
-                "name": "Полный запрос для поставщиков",
+                "name": "Полный запрос для партнеров",
                 "query": """
 EVALUATE
 SUMMARIZECOLUMNS(
-    'Suppliers'[ID],
-    'Suppliers'[Name],
-    'Suppliers'[Code],
-    'Suppliers'[INN],
-    'Suppliers'[MainManager],
-    'Suppliers'[Status],
-    'Suppliers'[CreatedAt],
-    'Suppliers'[UpdatedAt]
+    'УТ_Партнеры'[id_1c],
+    'УТ_Партнеры'[Партнер.УТ11],
+    'УТ_Партнеры'[is_client],
+    'УТ_Партнеры'[is_supplier]
 )
 """
             }
@@ -142,7 +150,7 @@ SUMMARIZECOLUMNS(
         
         # Новый тест: DAX из Airflow Variable
         dax_queries = json.loads(Variable.get('dax_queries'))
-        query = dax_queries['suppliers']['query']
+        query = dax_queries['partners']['query']
         test_dax_query(
             access_token,
             workspace_id,

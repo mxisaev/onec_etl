@@ -28,18 +28,19 @@
 
 ### 1. Запуск проекта:
 ```bash
-cd /var/www/vhosts/itland.uk/docker/dags/suppliers_etl
-./run_etl.sh SuppliersETL
+cd /var/www/vhosts/itland.uk/docker
+docker exec docker-airflow-webserver-1 airflow dags trigger SuppliersETL
 ```
 
 ### 2. Проверка логов:
 ```bash
-tail -f logs/etl.log
+tail -f docker/dags/suppliers_etl/logs/suppliers_etl.log
 ```
 
 ### 3. Тестирование подключений:
 ```bash
-python3 test_connection.py
+cd /var/www/vhosts/itland.uk/docker
+docker exec docker-airflow-webserver-1 python3 /opt/airflow/dags/suppliers_etl/tests/test_dax_diagnostic.py
 ```
 
 ## 🔧 Основные компоненты

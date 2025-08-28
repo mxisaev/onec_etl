@@ -1,75 +1,79 @@
 #!/usr/bin/env python3
 """
-Test script for suppliers DAX query
-This script tests the Power BI connection and executes the suppliers DAX query
+Test script for partners DAX query
+This script tests the Power BI connection and executes the partners DAX query
 """
 
 import sys
 import os
-import json
-from pathlib import Path
+from datetime import datetime
 
-# Add parent directory to path to import modules
-sys.path.append(str(Path(__file__).parent.parent))
+# Add parent directory to path
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-def test_suppliers_dax():
-    """Test the suppliers DAX query"""
+def test_partners_dax():
+    """Test the partners DAX query"""
     try:
-        # Import required modules
-        from suppliers_etl.services.powerbi.client import PowerBIClient
         from airflow.models import Variable
+        from suppliers_etl.services.powerbi.client import PowerBIClient
         
-        print("🔍 Testing suppliers DAX query...")
+        print("🔍 Testing partners DAX query...")
         
-        # Get DAX query from Airflow Variables
-        dax_queries = Variable.get("dax_queries", deserialize_json=True)
-        suppliers_query = dax_queries['suppliers']['query']
+        # Получаем DAX запрос из Airflow Variables
+        dax_queries = Variable.get('dax_queries', deserialize_json=True)
+        partners_query = dax_queries['partners']['query']
         
-        print(f"✅ Got suppliers DAX query from Airflow Variables")
-        print(f"📝 Query description: {dax_queries['suppliers']['description']}")
+        print(f"✅ Got partners DAX query from Airflow Variables")
+        print(f"📝 Query description: {dax_queries['partners']['description']}")
         
-        # Get dataset configuration
-        datasets = Variable.get("datasets", deserialize_json=True)
-        suppliers_dataset = datasets['suppliers']
+        # Получаем конфигурацию dataset
+        datasets = Variable.get('datasets', deserialize_json=True)
+        partners_dataset = datasets['partners']
         
-        print(f"📊 Dataset ID: {suppliers_dataset['id']}")
-        print(f"📊 Source table: {suppliers_dataset['source_table']}")
-        print(f"📊 Target table: {suppliers_dataset['target_table']}")
+        print(f"📊 Dataset ID: {partners_dataset['id']}")
+        print(f"📊 Source table: {partners_dataset['source_table']}")
+        print(f"📊 Target table: {partners_dataset['target_table']}")
         
-        # Initialize PowerBI client
+        # Инициализируем PowerBI клиент
         client = PowerBIClient()
-        print("✅ PowerBI client initialized")
         
-        # Execute DAX query
-        print("🚀 Executing suppliers DAX query...")
+        # Сначала протестируем простой запрос
+        print("🧪 Testing simple DAX query first...")
+        simple_query = "EVALUATE ROW(\"Test\", \"Hello World\")"
+        
+        try:
+            simple_result = client.execute_query(
+                dataset_id=partners_dataset['id'],
+                query=simple_query
+            )
+            print(f"✅ Simple query works! Result: {simple_result}")
+        except Exception as e:
+            print(f"❌ Simple query failed: {e}")
+            return
+        
+        print("🚀 Executing partners DAX query...")
+        
+        # Выполняем запрос
         result = client.execute_query(
-            dataset_id=suppliers_dataset['id'],
-            query=suppliers_query
+            dataset_id=partners_dataset['id'],
+            query=partners_query
         )
         
-        print(f"✅ Query executed successfully!")
-        print(f"📊 Result type: {type(result)}")
-        print(f"📊 Result length: {len(result) if result else 0}")
-        
         if result:
-            print(f"📊 First row: {result[0] if len(result) > 0 else 'No data'}")
-            print(f"📊 Columns: {list(result[0].keys()) if result and len(result) > 0 else 'No columns'}")
-        
-        return result
-        
+            print(f"✅ Query executed successfully")
+            print(f"📊 Rows returned: {len(result)}")
+            
+            if result:
+                print(f"📋 Sample data:")
+                for i, row in enumerate(result[:3]):
+                    print(f"   Row {i+1}: {row}")
+        else:
+            print("⚠️ No data returned from query")
+            
     except Exception as e:
-        print(f"❌ Error testing suppliers DAX query: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        return None
+        print(f"❌ Error testing partners DAX query: {str(e)}")
+        raise
 
 if __name__ == "__main__":
-    print("🧪 Starting suppliers DAX test...")
-    result = test_suppliers_dax()
-    
-    if result:
-        print(f"\n🎉 Test completed successfully!")
-        print(f"📊 Total rows returned: {len(result)}")
-    else:
-        print(f"\n💥 Test failed!")
-        sys.exit(1)
+    print("🧪 Starting partners DAX test...")
+    result = test_partners_dax()

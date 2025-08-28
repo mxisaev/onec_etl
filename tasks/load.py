@@ -24,8 +24,6 @@ def execute_etl_task(data, task):
         dict: Operation statistics
     """
     try:
-        logger.info(f"🔄 Загружаем данные в таблицу {task['target_table']}")
-        
         # Get configuration
         config = get_config()
         
@@ -98,8 +96,6 @@ def execute_etl_task(data, task):
             
             processed_rows += len(batch)
             updated_rows += result.get('updated_rows', 0)
-            
-            logger.info(f"📦 Обработано {processed_rows}/{total_rows} строк")
         
         stats = {
             'source': task['source_table'],
@@ -110,7 +106,6 @@ def execute_etl_task(data, task):
             'status': 'success'
         }
         
-        logger.info(f"✅ Данные успешно загружены в таблицу {task['target_table']}")
         return stats
         
     except Exception as e:

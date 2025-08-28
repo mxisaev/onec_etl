@@ -126,7 +126,7 @@ DAX_MAPPINGS = {
         'table_template': 'company_products_template'
     },
     'partners': {
-        'query': 'SUPPLIERS_QUERY',  # Будет загружен из Airflow Variables
+        'query': 'PARTNERS_QUERY',  # Будет загружен из Airflow Variables
         'columns': {
             'УТ_Партнеры[Партнер.УТ11]': 'partner',
             'УТ_Контактные лица партнеров[Контактное лицо]': 'contact',

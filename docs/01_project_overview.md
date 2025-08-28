@@ -4,7 +4,7 @@
 ETL проект для загрузки данных о партнерах (поставщиках и клиентах) из Power BI в PostgreSQL.
 
 ## Архитектура
-- **Источник данных**: Power BI (dataset: `afb5ea40-5805-4b0b-a082-81ca7333be85`)
+- **Источник данных**: Power BI (dataset: получается из Airflow Variable `datasets.partners.id`)
 - **Назначение**: PostgreSQL база данных `data`
 - **Оркестрация**: Apache Airflow
 
@@ -34,29 +34,35 @@ suppliers_etl/
 │   ├── extract.py            # Извлечение из Power BI
 │   └── load.py               # Загрузка в PostgreSQL
 ├── config/
-│   ├── variables.py          # Конфигурация Airflow переменных
-│   └── dax_mappings.py       # Маппинг DAX запросов
+│   ├── dax_mappings.py       # Маппинг DAX запросов
+├── dax_prepare/              # Подготовка DAX запросов
+│   ├── raw_queries.py        # Сырые DAX запросы
+│   ├── prepare_dax.py        # Обработка запросов
+│   └── update_airflow.sh     # Обновление переменных Airflow
+├── tests/                    # Тесты и диагностика
+│   ├── test_dax_diagnostic.py # Диагностика DAX
+│   └── test_suppliers_dax.py  # Тест основного DAX
 ├── logs/                     # Логи проекта
-│   └── etl.log              # Основной лог-файл
-└── README.md                 # Документация
+│   └── suppliers_etl.log     # Основной лог-файл
+└── docs/                     # Документация
 ```
 
 ## Логирование
 - **Модуль**: `utils.logger` (общий для всех проектов)
 - **Формат**: структурированные логи с эмодзи и цветами
-- **Файл**: `logs/etl.log` в папке проекта
+- **Файл**: `logs/suppliers_etl.log` в папке проекта
 - **Уровень**: DEBUG для файла, INFO для консоли
 
 ## Запуск
 ```bash
-cd /var/www/vhosts/itland.uk/docker/dags/suppliers_etl
-./run_etl.sh SuppliersETL
+cd /var/www/vhosts/itland.uk/docker
+docker exec docker-airflow-webserver-1 airflow dags trigger SuppliersETL
 ```
 
 ## Мониторинг
 - **Airflow UI**: http://localhost:8080
 - **DAG ID**: `SuppliersETL`
-- **Логи**: доступны в Airflow UI и в файле `logs/etl.log`
+- **Логи**: доступны в Airflow UI и в файле `logs/suppliers_etl.log`
 
 ## Зависимости
 - Apache Airflow

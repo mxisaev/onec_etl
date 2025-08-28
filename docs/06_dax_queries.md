@@ -35,17 +35,17 @@ Run the update script from the docker directory:
 
 ```bash
 cd /var/www/vhosts/itland.uk/docker
-docker compose exec airflow-webserver bash /opt/airflow/dags/oneC_etl/dax_prepare/update_airflow.sh
+docker exec docker-airflow-webserver-1 bash /opt/airflow/dags/suppliers_etl/dax_prepare/update_airflow.sh
 ```
 
 Or run individual steps:
 
 ```bash
 # Step 1: Prepare queries
-docker compose exec airflow-webserver python /opt/airflow/dags/oneC_etl/dax_prepare/prepare_dax.py
+docker exec docker-airflow-webserver-1 python3 /opt/airflow/dags/suppliers_etl/dax_prepare/prepare_dax.py
 
 # Step 2: Load into Airflow Variables
-docker compose exec airflow-webserver airflow variables set dax_queries "$(cat dags/oneC_etl/dax_prepare/dax_queries.json)"
+docker exec docker-airflow-webserver-1 bash /opt/airflow/dags/suppliers_etl/dax_prepare/update_airflow.sh
 ```
 
 ## Naming Convention
@@ -106,7 +106,7 @@ If you see "ModuleNotFoundError":
 
 3. **Process and load**:
    ```bash
-   docker compose exec airflow-webserver bash /opt/airflow/dags/oneC_etl/dax_prepare/update_airflow.sh
+   docker exec docker-airflow-webserver-1 bash /opt/airflow/dags/suppliers_etl/dax_prepare/update_airflow.sh
    ```
 
 4. **Use in DAG**:
@@ -120,5 +120,5 @@ If you see "ModuleNotFoundError":
 
 5. **Test the DAG**:
    ```bash
-   docker compose exec airflow-webserver airflow dags trigger CompanyProductsETL
+   docker exec docker-airflow-webserver-1 airflow dags trigger SuppliersETL
    ``` 

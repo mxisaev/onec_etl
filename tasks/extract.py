@@ -33,8 +33,6 @@ def extract_powerbi_data(task_config: Dict[str, Any]) -> List[Dict[str, Any]]:
         Список словарей с данными
     """
     try:
-        logger.info("🔄 Начинаем извлечение данных из Power BI...")
-        
         # Получаем параметры из конфигурации
         dataset_id = task_config.get('dataset_id')
         dax_query_key = task_config.get('dax_query_key')  # Ключ для получения DAX из переменных
@@ -52,10 +50,6 @@ def extract_powerbi_data(task_config: Dict[str, Any]) -> List[Dict[str, Any]]:
             raise ValueError(f"DAX запрос '{dax_query_key}' не найден в переменной dax_queries")
         
         actual_dax_query = dax_queries_dict[dax_query_key]['query']
-        logger.info(f"🔍 Получен DAX запрос по ключу '{dax_query_key}'")
-        
-        logger.info(f"📊 Выполняем DAX запрос к dataset: {dataset_id}")
-        # logger.info(f"🔍 DAX запрос: {actual_dax_query[:100]}...")  # Убрано по требованию
         
         # Используем PowerBI клиент из suppliers_etl
         from suppliers_etl.services.powerbi.client import PowerBIClient
@@ -69,8 +63,6 @@ def extract_powerbi_data(task_config: Dict[str, Any]) -> List[Dict[str, Any]]:
         if not raw_data:
             logger.warning("⚠️ Данные не получены из Power BI")
             return []
-        
-        logger.info(f"📥 Получено {len(raw_data)} строк из Power BI")
         
         # Трансформируем данные согласно маппингу колонок
         transformed_data = []
@@ -86,12 +78,6 @@ def extract_powerbi_data(task_config: Dict[str, Any]) -> List[Dict[str, Any]]:
             # Добавляем timestamp
             transformed_row['extracted_at'] = datetime.utcnow().isoformat()
             transformed_data.append(transformed_row)
-        
-        logger.info(f"✅ Данные успешно трансформированы: {len(transformed_data)} строк")
-        
-        # Показываем пример данных
-        if transformed_data:
-            logger.info(f"📋 Пример данных: {transformed_data[0]}")
         
         return transformed_data
         
