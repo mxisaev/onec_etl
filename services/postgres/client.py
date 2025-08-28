@@ -45,7 +45,7 @@ class PostgresClient:
                 "TIMESTAMP": "TIMESTAMP"
             }
             
-            logger.info("Successfully initialized PostgreSQL client")
+
             
         except Exception as e:
             logger.exception(f"Error initializing PostgreSQL client: {str(e)}")

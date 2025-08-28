@@ -15,15 +15,33 @@ Customize it for your specific project.
 
 # Add your DAX queries below:
 
-YOUR_DAX_QUERY_NAME = """  # CHANGE THIS
+COMPANY_PRODUCTS_QUERY = """
 EVALUATE
-SUMMARIZECOLUMNS(
-    'YourTable'[Column1],      -- CHANGE THIS
-    'YourTable'[Column2],      -- CHANGE THIS
-    'YourTable'[Column3],      -- CHANGE THIS
-    -- Add more columns as needed
-    
-    -- Optional: Add measures
-    "Total Count", COUNTROWS('YourTable')
+TOPN(15000,
+    SUMMARIZECOLUMNS(
+        'CompanyProducts'[ID],
+        'CompanyProducts'[Description],
+        'CompanyProducts'[Brand],
+        'CompanyProducts'[Category],
+        'CompanyProducts'[Withdrawn_from_range],
+        'CompanyProducts'[item_number],
+        "Product_Properties", 
+        VAR CurrentProduct = SELECTEDVALUE('УТ_Номенклатура'[Артикул], "No Product Selected")
+        RETURN
+        CONCATENATEX(
+            TOPN(
+                1000,
+                FILTER(
+                    'Char_table',
+                    [Артикул] = CurrentProduct
+                ),
+                [SortOrder]
+            ),
+            [_description] & ": " & [Значение],
+            " | ",
+            [SortOrder]
+        )
+    ),
+    'CompanyProducts'[ID]
 )
 """

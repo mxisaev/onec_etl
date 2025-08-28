@@ -23,8 +23,6 @@ class PowerBIClient:
             if not all([self.client_id, self.client_secret, self.tenant_id, self.workspace_id]):
                 raise ValueError("PowerBI credentials not found in Airflow Variables")
             
-            logger.info(f"Initializing PowerBI client with workspace_id: {self.workspace_id}")
-            
             # Initialize MSAL client
             self.client = ConfidentialClientApplication(
                 client_id=self.client_id,
@@ -34,8 +32,6 @@ class PowerBIClient:
             
             # Get access token
             self.token = self._get_access_token()
-            
-            logger.info("Successfully initialized PowerBI client")
             
         except Exception as e:
             logger.exception(f"Error initializing PowerBI client: {str(e)}")
@@ -53,7 +49,6 @@ class PowerBIClient:
                 logger.error(error_msg)
                 raise ValueError(error_msg)
             
-            logger.info("Successfully acquired access token")
             return result["access_token"]
             
         except Exception as e:
@@ -98,10 +93,6 @@ class PowerBIClient:
             # Execute request
             response = requests.post(url, headers=headers, json=body)
             
-            # Log response details
-            logger.info(f"Response status code: {response.status_code}")
-            logger.info(f"Response headers: {json.dumps(dict(response.headers))}")
-            
             if response.status_code != 200:
                 error_msg = f"Error response: {response.text}"
                 logger.error(error_msg)
@@ -109,7 +100,6 @@ class PowerBIClient:
             
             # Parse results
             result = response.json()
-            logger.info(f"Successfully executed query. Response structure: {json.dumps({k: type(v).__name__ for k, v in result.items()})}")
             
             if 'results' not in result or not result['results']:
                 raise ValueError("No results found in response")

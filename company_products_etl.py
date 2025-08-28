@@ -37,7 +37,7 @@ dag = DAG(
     'CompanyProductsETL',
     default_args=default_args,
     description='ETL процесс для извлечения данных о товарах компании из Power BI и загрузки в PostgreSQL',
-    schedule_interval='0 6 * * 1-5',  # Пн-Пт в 6:00 UTC (до ColorProcessingETL)
+    schedule_interval='35 4-13 * * 1-5',  # Пн-Пт каждые 35 минут с 4:00 до 13:00 UTC (9:00-18:00 UTC+5)
     catchup=False,
     tags=['etl', 'powerbi', 'postgres', 'company_products', 'product_properties']
 )
@@ -60,6 +60,7 @@ def extract_powerbi_data_task(**context):
                 'CompanyProducts[Category]': 'category',
                 'CompanyProducts[Withdrawn_from_range]': 'withdrawn_from_range',
                 'CompanyProducts[item_number]': 'item_number',
+                '[Product_Properties]': 'product_properties',
                 'УТ_Товарные категории[_description]': 'product_category',
                 'УТ_РСвДополнительныеСведения2_0[Под заказ]': 'on_order',
                 'Выводится_без_остатков': 'is_vector',
@@ -68,17 +69,6 @@ def extract_powerbi_data_task(**context):
         }
         
         result = extract_powerbi_data(task_config)
-        
-        logger.info(f"✅ Извлечение данных завершено: {len(result)} строк")
-        
-        # Итоговая плашка для задачи extract
-        logger.info("")
-        logger.info("=" * 80)
-        logger.info("🎉 ЗАДАЧА EXTRACT - ВЫПОЛНЕНА УСПЕШНО")
-        logger.info(f"📊 Извлечено {len(result)} строк из Power BI")
-        logger.info("=" * 80)
-        logger.info("")
-        
         return result
         
     except Exception as e:
@@ -111,17 +101,6 @@ def load_to_postgres_task(**context):
         }
         
         result = execute_etl_task(df, task_config)
-        
-        logger.info(f"✅ Загрузка данных завершена: {result}")
-        
-        # Итоговая плашка для задачи load
-        logger.info("")
-        logger.info("=" * 80)
-        logger.info("🎉 ЗАДАЧА LOAD - ВЫПОЛНЕНА УСПЕШНО")
-        logger.info(f"📊 Загружено {result.get('total_rows', 0)} строк в PostgreSQL")
-        logger.info("=" * 80)
-        logger.info("")
-        
         return result
         
     except Exception as e:
@@ -155,8 +134,6 @@ def validate_data_task(**context):
         if products_result:
             products_stats = products_result[0]
             
-            logger.info(f"📊 Статистика товаров: {products_stats}")
-            
             # Проверяем качество данных
             validation_status = "success"
             if products_stats['total_products'] == 0:
@@ -177,22 +154,8 @@ def validate_data_task(**context):
                 "message": f"Проверено {products_stats['total_products']} товаров"
             }
             
-            # Итоговая плашка для задачи validate
-            logger.info("")
-            logger.info("=" * 80)
-            logger.info("🎉 ЗАДАЧА VALIDATE - ВЫПОЛНЕНА УСПЕШНО")
-            logger.info(f"📊 Проверено {products_stats['total_products']} товаров")
-            logger.info("=" * 80)
-            logger.info("")
-            
-            # ГЛАВНАЯ ИТОГОВАЯ ПЛАШКА DAG'а
-            logger.info("")
-            logger.info("")
-            logger.info("=" * 80)
-            logger.info("🎉 DAG CompanyProductsETL - ВЫПОЛНЕН УСПЕШНО")
-            logger.info("=" * 80)
-            logger.info("")
-            logger.info("")
+            # Добавляем итоговую строку
+            logger.info("🎯 ========================================")
             
             return result
         else:
