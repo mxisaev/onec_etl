@@ -143,18 +143,30 @@ def validate_data_task(**context):
                 validation_status = "warning"
                 logger.warning("⚠️ У товаров нет описаний")
             elif products_stats['products_with_brand'] == 0:
-                validation_status = "warning"
                 logger.warning("⚠️ У товаров нет брендов")
             else:
                 logger.info("✅ Данные о товарах загружены корректно")
             
+            # Получаем результаты очистки из предыдущей задачи
+            ti = context['ti']
+            cleanup_result = ti.xcom_pull(task_ids='cleanup_orphaned_records')
+            
+            if cleanup_result and cleanup_result.get('status') == 'success':
+                logger.info(f"🗑️ Очистка: удалено {cleanup_result.get('deleted_records', 0)} устаревших записей")
+            
             result = {
                 "status": validation_status,
                 "products": products_stats,
+                "cleanup": cleanup_result,
                 "message": f"Проверено {products_stats['total_products']} товаров"
             }
             
             # Добавляем итоговую строку
+            logger.info("🎯 ========================================")
+            logger.info(f"📊 Итоговая статистика:")
+            logger.info(f"   - Всего товаров: {products_stats['total_products']}")
+            if cleanup_result and cleanup_result.get('status') == 'success':
+                logger.info(f"   - Удалено устаревших: {cleanup_result.get('deleted_records', 0)}")
             logger.info("🎯 ========================================")
             
             return result
@@ -164,6 +176,34 @@ def validate_data_task(**context):
         
     except Exception as e:
         logger.exception(f"❌ Ошибка валидации: {str(e)}")
+        raise
+
+def cleanup_orphaned_records_task(**context):
+    """Удаление записей, которых нет в новой выгрузке PowerBI"""
+    try:
+        logger.info("🔄 Начинаем очистку устаревших записей...")
+        
+        from oneC_etl.tasks.cleanup import cleanup_orphaned_records
+        
+        # Получаем данные из предыдущей задачи
+        ti = context['ti']
+        data = ti.xcom_pull(task_ids='extract_powerbi_data')
+        
+        if data is None:
+            raise ValueError("Нет данных для очистки")
+        
+        # Конфигурация очистки
+        cleanup_config = {
+            'source_table': 'powerbi_company_products',
+            'target_table': 'companyproducts',
+            'key_column': 'id'  # Используем 'id' как в PowerBI данных
+        }
+        
+        result = cleanup_orphaned_records(data, cleanup_config)
+        return result
+        
+    except Exception as e:
+        logger.exception(f"❌ Ошибка очистки устаревших записей: {str(e)}")
         raise
 
 # Создание задач согласно архитектуре из документации
@@ -187,11 +227,18 @@ validate_operator = PythonOperator(
     dag=dag
 )
 
+cleanup_operator = PythonOperator(
+    task_id='cleanup_orphaned_records',
+    python_callable=cleanup_orphaned_records_task,
+    dag=dag
+)
+
 # Настройка зависимостей согласно потоку данных:
 # 1. Извлечение данных из Power BI через DAX
 # 2. Загрузка в таблицу companyproducts
 # 3. Валидация загруженных данных о товарах
-extract_operator >> load_operator >> validate_operator
+# 4. Очистка устаревших записей
+extract_operator >> load_operator >> validate_operator >> cleanup_operator
 
 if __name__ == "__main__":
     dag.cli()
